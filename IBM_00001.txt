@@ -1,0 +1,1410 @@
+*&H*********************************************************************
+*&H      Developer     : Hamad Ahmad                                   *
+*&H      Date          : 26.10.2021                                    *
+*&H      Company       : Systems Limited                               *
+*&P*********************************************************************
+*&D             Report : ZFIND_CDS_VIEWS_AND_TABLES                    *
+*&D             Tcode  : ZCDS                                          *
+*&D Program Defination : Find the Views/CDS/Tables Store Multiple Field*
+*&A*********************************************************************
+*&A PROGRAM CHANGES / Modification Logs :                              *
+*&A +-----------------------------------------------------------------+*
+*&A I Date  I    Code          I Programmer    I     Changes          I*
+*&A +-----------------------------------------------------------------+*
+*&A         I                  I               I                       *
+*&A*********************************************************************
+* SAHK900100       HAMMAD     TR: For testing Abap Objects [HMD]
+************************************************************************
+
+report.
+
+tables: dd04t,
+        swwwihead,
+        vbkpf,
+        rbkp,
+        cdhdr,
+        cdpos,
+        dd03l,
+        dd41v,
+        t685t,
+        vbpa,
+        tpart,
+        konvc,
+        boole,
+        ekko.
+data:dref type ref to data.
+field-symbols:<table> type standard table.
+type-pools: slis, icon.
+
+* Internal Tables
+types: begin of t_ialv,
+         tabname    type dd03l-tabname,
+         ddtext     type dd02t-ddtext,
+         ddlname    type ddldependency-ddlname,
+         objectname type ddldependency-objectname,
+         tbtext     type ddddlsrct-ddtext,
+         field1     type dd03l-fieldname,
+         field2     type dd03l-fieldname,
+         field3     type dd03l-fieldname,
+         field4     type dd03l-fieldname,
+       end of t_ialv .
+
+data: ialv   type standard table of t_ialv,
+      wa_alv type t_ialv.
+
+data: alv_container type ref to cl_gui_custom_container,
+      alv_grid      type ref to cl_gui_alv_grid,
+      ok_code       like sy-ucomm,
+      fieldcat      type slis_t_fieldcat_alv with header line.
+
+***********SELECTION SCREEN*********************************
+selection-screen begin of block bl with frame title title_1.
+
+
+  selection-screen begin of line.
+    selection-screen comment (15)  s_cds for field cds.
+    parameters:
+                    cds radiobutton group rdG1 default 'X'.
+  selection-screen end of line.
+
+  selection-screen begin of line.
+    selection-screen comment (15)  s_Tab for field table.
+    parameters:
+                    table radiobutton group rdG1.
+  selection-screen end of line.
+
+selection-screen end of block bl.
+
+
+selection-screen begin of block b2 with frame title title_2.
+
+  selection-screen begin of line.
+
+    selection-screen comment (11)  t_FIELD1 for field s_field1.
+
+    select-options:
+
+*                    s_field1 FOR dd03l-fieldname NO-EXTENSION NO INTERVALS DEFAULT 'EBELN' OBLIGATORY,
+*                    s_field2 FOR dd03l-fieldname NO-EXTENSION NO INTERVALS DEFAULT 'EBELP' OBLIGATORY,
+*                    s_field3 FOR dd03l-fieldname NO-EXTENSION NO INTERVALS DEFAULT 'BELNR',
+*                    s_field4 FOR dd03l-fieldname NO-EXTENSION NO INTERVALS DEFAULT 'MATNR',
+
+                    s_field1 for dd03l-fieldname no-extension no intervals  obligatory,
+                    s_field2 for dd03l-fieldname no-extension no intervals ,
+                    s_field3 for dd03l-fieldname no-extension no intervals ,
+                    s_field4 for dd03l-fieldname no-extension no intervals ,
+
+                    s_exc for boole-boole no-extension no intervals default'/' no-display.
+  selection-screen end of line.
+
+  selection-screen skip 1.
+
+selection-screen end of block b2.
+
+initialization.
+  title_1   = 'Find Your CDS Views or Standard Tables'.
+  title_2   = 'Enter your Required Fields'.
+  t_FIELD1  = 'Fields Name'.
+  s_cds     = 'CDS Views'.
+  S_tab     = 'Standard Tables'.
+
+***********SELECTION SCREEN*********************************
+
+*SELECT-OPTIONS: S_FIELD1 FOR DD03L-FIELDNAME NO-EXTENSION NO INTERVALS DEFAULT 'EBELN',
+**s_crdat for /opt/vim_1head-ARCHIVE_DATE,
+*S_FIELD2 FOR DD03L-FIELDNAME NO-EXTENSION NO INTERVALS DEFAULT 'EBELP',
+*S_FIELD3 FOR DD03L-FIELDNAME NO-EXTENSION NO INTERVALS DEFAULT 'BELNR',
+*S_FIELD4 FOR DD03L-FIELDNAME NO-EXTENSION NO INTERVALS DEFAULT 'MATNR',
+*S_EXC FOR BOOLE-BOOLE NO-EXTENSION NO INTERVALS DEFAULT'/' NO-DISPLAY.
+
+start-of-selection.
+
+  if s_field2 is initial.
+    s_field2 = s_field1.
+  endif.
+
+  field-symbols:<fs_tab13> type mandt.
+  data:wa_dd1      type dd03l,
+       wa_dd2      type dd03l,
+       wa_dd3      type dd03l,
+       wa_dd4      type dd03l,
+       lv_tab      type dd03l-tabname,
+       wa_dd_final type dd03l.
+  if s_exc-low is not initial.
+    lv_tab = '/%'.
+  endif.
+
+
+  if cds eq 'X'.
+    perform cds_Views.
+  else.
+    perform standard_tables.
+  endif.
+
+  perform get_fieldcatalog.
+
+  call function 'REUSE_ALV_GRID_DISPLAY'
+    exporting
+      i_callback_program = sy-repid
+*     is_layout          = w_layout
+      it_fieldcat        = fieldcat[]
+*     it_events          = i_events
+    tables
+      t_outtab           = ialv
+    exceptions
+      program_error      = 1
+      others             = 2.
+  if sy-subrc <> 0.
+
+  endif.
+
+form standard_tables.
+
+  if s_field1-low is not initial.
+    select c~tabname
+      from ( ( dd03l as c
+           inner join dd02v as p on p~tabname  = c~tabname
+                                and p~tabclass = 'TRANSP')
+*                              AND p~cityto   = @cityto )
+           inner join dd09l as f on f~tabname = p~tabname )
+      where ( ( c~rollname eq @s_field1-low )
+      or ( c~fieldname eq @s_field1-low  ) )
+      and p~tabname not like @lv_tab
+         into table @data(itab13).
+  endif.
+  if s_field2-low is not initial.
+    select c~tabname
+    from ( ( dd03l as c
+         inner join dd02v as p on p~tabname  = c~tabname
+                              and p~tabclass = 'TRANSP')
+*                              AND p~cityto   = @cityto )
+         inner join dd09l as f on f~tabname = p~tabname )
+    where ( ( c~rollname eq @s_field2-low )
+    or ( c~fieldname eq @s_field2-low  )    )
+    and p~tabname not like @lv_tab
+       into table @data(itab14).
+  endif.
+  if s_field3-low is not initial.
+    select c~tabname
+    from ( ( dd03l as c
+         inner join dd02v as p on p~tabname  = c~tabname
+                              and p~tabclass = 'TRANSP')
+         inner join dd09l as f on f~tabname = p~tabname )
+    where ( ( c~rollname eq @s_field3-low )
+
+    or ( c~fieldname eq @s_field3-low  )    )
+    and p~tabname not like @lv_tab
+       into table @data(itab15).
+  endif.
+  if s_field4-low is not initial.
+    select c~tabname
+  from ( ( dd03l as c
+       inner join dd02v as p on p~tabname  = c~tabname
+                            and p~tabclass = 'TRANSP')
+*                              AND p~cityto   = @cityto )
+       inner join dd09l as f on f~tabname = p~tabname )
+  where ( ( c~rollname eq @s_field4-low )
+  or ( c~fieldname eq @s_field4-low  )
+  )
+  and p~tabname not like @lv_tab
+*                                AND f~connid = p~connid )
+*       ORDER BY c~carrname, p~connid, f~fldate
+     into table @data(itab16).
+  endif.
+  sort itab13 by tabname.
+  delete adjacent duplicates from itab13 comparing tabname..
+  sort itab14 by tabname.
+  delete adjacent duplicates from itab14 comparing tabname..
+  sort itab15 by tabname.
+  delete adjacent duplicates from itab15 comparing tabname..
+  sort itab16 by tabname.
+  delete adjacent duplicates from itab16 comparing tabname.
+  if s_field1-low is not initial.
+
+    loop at itab13 into data(wa_tab133).
+      if itab14[] is not initial.
+        read table itab14  into data(wa_tab134) with key tabname = wa_tab133-tabname.
+        if sy-subrc = 0.
+          if itab15[] is not initial.
+            read table itab15  into data(wa_tab135) with key tabname = wa_tab133-tabname.
+            if sy-subrc = 0.
+              if itab16[] is not initial.
+                read table itab16  into data(wa_tab136) with key tabname = wa_tab133-tabname.
+                if sy-subrc = 0.
+                  wa_alv-tabname =  wa_tab134-tabname.
+                  wa_alv-field1 =  s_field1-low.
+                  wa_alv-field2 =  s_field2-low.
+                  wa_alv-field3 =  s_field3-low.
+                  wa_alv-field4 =  s_field4-low.
+                  append wa_alv to ialv.
+                  clear wa_alv.
+                else.
+
+                  wa_alv-tabname =  wa_tab134-tabname.
+                  wa_alv-field1 =  s_field1-low.
+                  wa_alv-field2 =  s_field2-low.
+                  wa_alv-field3 =  s_field3-low.
+                  append wa_alv to ialv.
+                  clear wa_alv.
+                endif.
+              else.
+
+                wa_alv-tabname =  wa_tab134-tabname.
+                wa_alv-field1 =  s_field1-low.
+                wa_alv-field2 =  s_field2-low.
+                wa_alv-field3 =  s_field3-low.
+
+                append wa_alv to ialv.
+                clear wa_alv.
+              endif.
+            else.
+
+              wa_alv-tabname =  wa_tab134-tabname.
+              wa_alv-field1 =  s_field1-low.
+              wa_alv-field2 =  s_field2-low.
+
+              append wa_alv to ialv.
+              clear wa_alv.
+            endif.
+
+          else.
+            wa_alv-tabname =  wa_tab134-tabname.
+            wa_alv-field1 =  s_field1-low.
+            wa_alv-field2 =  s_field2-low.
+            append wa_alv to ialv.
+            clear wa_tab134.
+            clear wa_alv.
+          endif.
+
+        endif.
+      endif.
+
+    endloop.
+
+  endif.
+  delete adjacent duplicates from ialv comparing all fields.
+
+  loop at ialv into wa_alv.
+
+    select single ddtext from dd02t into wa_alv-tbtext where tabname eq wa_alv-tabname and ddlanguage eq 'E'.
+
+    modify ialv from wa_alv.
+    clear wa_alv.
+  endloop.
+
+endform.
+
+form cds_Views.
+  if s_field1-low is not initial.
+
+    select c~ddlname, c~objectname, p~tabname, p~fieldname, p~rollname
+      from ( ddldependency as c
+           inner join dd03l as p on p~tabname  = c~objectname
+                                and p~as4local = c~state )
+
+      where p~fieldname = @s_field1-low
+      and p~tabname not like @lv_tab
+
+         into table @data(itab13).
+  endif.
+  if s_field2-low is not initial.
+
+    select c~ddlname, c~objectname, p~tabname, p~fieldname, p~rollname
+    from ( ddldependency as c
+         inner join dd03l as p on p~tabname  = c~objectname
+                              and p~as4local = c~state )
+*                              AND p~cityto   = @cityto )
+*         INNER JOIN dd09l AS f ON f~tabname = p~tabname )
+    where p~fieldname = @s_field2-low
+      and p~tabname not like @lv_tab
+       into table @data(itab14).
+  endif.
+  if s_field3-low is not initial.
+
+    select c~ddlname, c~objectname, p~tabname, p~fieldname, p~rollname
+    from ( ddldependency as c
+         inner join dd03l as p on p~tabname  = c~objectname
+                              and p~as4local = c~state )
+    where p~fieldname = @s_field3-low
+      and p~tabname not like @lv_tab
+       into table @data(itab15).
+  endif.
+  if s_field4-low is not initial.
+
+    select c~ddlname, c~objectname, p~tabname, p~fieldname, p~rollname
+    from ( ddldependency as c
+         inner join dd03l as p on p~tabname  = c~objectname
+                              and p~as4local = c~state )
+*                              AND p~cityto   = @cityto )
+*         INNER JOIN dd09l AS f ON f~tabname = p~tabname )
+    where p~fieldname = @s_field4-low
+      and p~tabname not like @lv_tab
+       into table @data(itab16).
+  endif.
+  sort itab13 by tabname.
+  delete adjacent duplicates from itab13 comparing tabname..
+  sort itab14 by tabname.
+  delete adjacent duplicates from itab14 comparing tabname..
+  sort itab15 by tabname.
+  delete adjacent duplicates from itab15 comparing tabname..
+  sort itab16 by tabname.
+  delete adjacent duplicates from itab16 comparing tabname.
+  if s_field1-low is not initial.
+    loop at itab13 into data(wa_tab133).
+      if itab14[] is not initial.
+        read table itab14  into data(wa_tab134) with key ddlname = wa_tab133-ddlname.
+        if sy-subrc = 0.
+          if itab15[] is not initial.
+            read table itab15  into data(wa_tab135) with key ddlname = wa_tab133-ddlname."tabname = wa_tab133-tabname.
+            if sy-subrc = 0.
+              if itab16[] is not initial.
+                read table itab16  into data(wa_tab136) with key ddlname = wa_tab133-ddlname."tabname = wa_tab133-tabname.
+                if sy-subrc = 0.
+                  wa_alv-tabname =  wa_tab134-tabname.
+                  wa_alv-objectname =  wa_tab134-objectname.
+                  wa_alv-ddlname =  wa_tab134-ddlname.
+                  wa_alv-field1 =  s_field1-low.
+                  wa_alv-field2 =  s_field2-low.
+                  wa_alv-field3 =  s_field3-low.
+                  wa_alv-field4 =  s_field4-low.
+                  append wa_alv to ialv.
+                  clear wa_alv.
+                else.
+
+                  wa_alv-tabname =  wa_tab134-tabname.
+                  wa_alv-objectname =  wa_tab134-objectname.
+                  wa_alv-ddlname =  wa_tab134-ddlname.
+                  wa_alv-field1 =  s_field1-low.
+                  wa_alv-field2 =  s_field2-low.
+                  wa_alv-field3 =  s_field3-low.
+                  append wa_alv to ialv.
+                  clear wa_alv.
+                endif.
+              else.
+
+                wa_alv-objectname =  wa_tab134-objectname.
+                wa_alv-ddlname =  wa_tab134-ddlname.
+                wa_alv-field1 =  s_field1-low.
+                wa_alv-field2 =  s_field2-low.
+                wa_alv-field3 =  s_field3-low.
+
+                append wa_alv to ialv.
+                clear wa_alv.
+              endif.
+            else.
+
+              wa_alv-tabname =  wa_tab134-tabname.
+              wa_alv-objectname =  wa_tab134-objectname.
+              wa_alv-ddlname =  wa_tab134-ddlname.
+              wa_alv-field1 =  s_field1-low.
+              wa_alv-field2 =  s_field2-low.
+
+              append wa_alv to ialv.
+              clear wa_alv.
+            endif.
+
+          else.
+            wa_alv-tabname =  wa_tab134-tabname.
+            wa_alv-objectname =  wa_tab134-objectname.
+            wa_alv-ddlname =  wa_tab134-ddlname.
+            wa_alv-field1 =  s_field1-low.
+            wa_alv-field2 =  s_field2-low.
+            append wa_alv to ialv.
+            clear wa_tab134.
+            clear wa_alv.
+          endif.
+
+        endif.
+      endif.
+
+    endloop.
+
+
+  endif.
+  delete adjacent duplicates from ialv comparing all fields.
+
+
+  loop at ialv into wa_alv.
+
+    select single ddtext from ddddlsrct into wa_alv-ddtext where ddlname eq wa_alv-ddlname.
+
+    modify ialv from wa_alv.
+    clear wa_alv.
+  endloop.
+
+endform.
+
+
+form get_fieldcatalog.
+
+  if table = 'X'.
+
+    clear: fieldcat.
+    fieldcat-seltext_m    = 'Tablename'.
+    fieldcat-fieldname  = 'TABNAME'.
+    fieldcat-outputlen  = '15'.
+    append fieldcat to fieldcat.
+
+    clear: fieldcat.
+    fieldcat-seltext_m    = 'Table Short text'.
+    fieldcat-fieldname  = 'TBTEXT'.
+    fieldcat-outputlen  = '60'.
+    append fieldcat to fieldcat.
+
+  endif.
+
+*  CLEAR: FIELDCAT.
+*  FIELDCAT-SELTEXT_M    = 'DDLNAME'.
+*  FIELDCAT-FIELDNAME  = 'DDLNAME'.
+*  FIELDCAT-OUTPUTLEN  = '20'.
+*  APPEND FIELDCAT TO FIELDCAT.
+
+  if cds = 'X'.
+    clear: fieldcat.
+    fieldcat-seltext_m    = 'CDS VIEWS'.
+    fieldcat-fieldname  = 'OBJECTNAME'.
+    fieldcat-outputlen  = '20'.
+    append fieldcat to fieldcat.
+
+    clear: fieldcat.
+    fieldcat-seltext_m    = 'DDL Short text'.
+    fieldcat-fieldname  = 'DDTEXT'.
+    fieldcat-outputlen  = '60'.
+    append fieldcat to fieldcat.
+  endif.
+
+  clear: fieldcat.
+  fieldcat-seltext_m   = 'Field1'.
+  fieldcat-fieldname  = 'FIELD1'.
+  fieldcat-outputlen  = '12'.
+  append fieldcat to fieldcat.
+  clear: fieldcat.
+  fieldcat-seltext_m   = 'Field2'.
+  fieldcat-fieldname  = 'FIELD2'.
+  fieldcat-outputlen  = '12'.
+  append fieldcat to fieldcat.
+  clear: fieldcat.
+  fieldcat-seltext_m   = 'Field3'.
+  fieldcat-fieldname  = 'FIELD3'.
+  fieldcat-outputlen  = '12'.
+  append fieldcat to fieldcat.
+  clear: fieldcat.
+  fieldcat-seltext_m    = 'Field4'.
+  fieldcat-fieldname  = 'FIELD4'.
+  fieldcat-outputlen  = '12'.
+  append fieldcat to fieldcat.
+
+endform.
+There is no standard way to find specific CDS views in SE11, SE84, or any standard transaction code so this is the best way to find CDS Views as well as Standard Tables according to our requirements.
+
+Special thanks to Mr. arghadip kar , whose post here helped me with this one. Whereas his post provides CDS views, I thought we could get both CDS and Table in one program, so I merged in one.
+
+Assigned Tags
+ABAP Development
+SAP ERP
+Find CDS Views
+how to find tables in sap
+SAP ABAP CDS
+Similar Blog Posts
+Custom Enhancement to avoid dump in standard transaction after S/4 HANA migration
+By Pankaj YadavMar 04, 2019
+ABAP Dictionary External Views for Overcoming ABAP CDS Views Limitations
+By Maksim AlyapyshevMay 24, 2018
+CDS - One Concept, Two Flavors
+By Horst KellerJul 20, 2015
+Related Questions
+how to check whether a view is cds and get list of its field?
+By ricky luoDec 24, 2020
+split field
+By Former MemberMar 11, 2008
+Replicate the ECC behavior in SAP BTP
+By Bodhisattwa PalOct 19, 2021
+Join the Conversation
+SAP TechEd
+SAP TechEd
+Tune in for tech talk. Stay for inspiration. Upskill your future.
+SAP BTP Learning Group
+SAP BTP Learning Group
+SAP Business Technology Platform Learning Journeys.
+Coffee Corner
+Coffee Corner
+Join the new Coffee Corner Discussion Group.
+12 Comments
+Author's profile photo Miller Lam
+Miller Lam
+February 14, 2022 at 7:51 am
+Dear Hamad Ahmad,
+
+Such a wonderful sharing.
+
+Thanks for your selfless sharing.
+
+ 
+
+🙂
+
+ 
+
+
+Like 1
+
+Reply
+
+Alert Moderator
+Share
+Author's profile photo Jigang Zhang 张吉刚
+Jigang Zhang 张吉刚
+February 15, 2022 at 1:08 am
+@Hamad Ahmad
+
+Thanks for sharing this. Will use it in the future for sure.
+
+
+Like 1
+
+Reply
+
+Alert Moderator
+Share
+Author's profile photo Hamad Ahmad
+Hamad Ahmad
+Blog Post Author
+April 24, 2022 at 9:46 am
+Thanks, Jigang Zhang 张吉刚
+
+
+Like 0
+
+Reply
+
+Alert Moderator
+Share
+Author's profile photo Bärbel Winkler
+Bärbel Winkler
+March 9, 2022 at 11:52 am
+Hamad Ahmad
+
+Hi Hamad,
+
+thanks for this! I regularly get requests for help from colleauges who would like to know which table a screen-field is sourced from and where F1 doesn't "spill the beans" but only points to a structure instead of the actual source table. Your code will come in handy for occasions like that!
+
+So, I used your idea and some of your code for inspiration but created a program using local classes instead of forms. I also enhanced the logic a bit here and there, so that whatever fieldname is put into FIELD1 determines the subset of tables/CDS-views and the other columns in the ALV get filled (from left to right) when fieldnames in FIELD2, FIELD3 and FIELD4 are also present in the definition.
+
+I also added a hotspot to jump into SE12 for a tablename or CDS-view.
+
+Below is my code (which I'm sure still has lots of room for improvements and comes without any guarantees that it's working correctly!)
+
+Cheers
+
+Bärbel
+
+Update May 4, 2022: As suggested by Andrea Borgia in his comment below, here is a specific task needed for the ALV-output generation in method DISPLAY_DATA:
+
+Activate ALV generic Functions
+Note: PF-Status STANDARD needs to be copied from FG SALV as SALV_STANDARD!
+
+REPORT get_tables_and_cdsviews.
+
+*-----------------------------------------------------------------------
+*        Table definitions
+*-----------------------------------------------------------------------
+TABLES: dd03l,                "Fields in tables
+        dd02t,                "Tablenames
+        ddldependency,        "CDS-Views
+        boole.
+*----------------------------------------------------------------------*
+*       CLASS LCX_EXCEPTION DEFINITION                                 *
+*----------------------------------------------------------------------*
+* Class to Raise exception                                             *
+* -- Inherited from cx_static_check                                    *
+* -- Redefinition of method get_text                                   *
+*----------------------------------------------------------------------*
+CLASS lcx_exception DEFINITION INHERITING FROM cx_static_check.
+  PUBLIC SECTION.
+    METHODS    : get_text REDEFINITION.
+    CLASS-DATA : lv_result TYPE string.
+ENDCLASS.                    "LCX_EXCEPTION DEFINITION
+
+*----------------------------------------------------------------------*
+*       CLASS LCX_EXCEPTION IMPLEMENTATION                             *
+*----------------------------------------------------------------------*
+CLASS lcx_exception IMPLEMENTATION.
+  METHOD : get_text.
+    result = lv_result.
+  ENDMETHOD.
+ENDCLASS.                    "LCX_EXCEPTION IMPLEMENTATION
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_main DEFINITION                                      *
+*----------------------------------------------------------------------*
+CLASS lcl_main DEFINITION.
+
+  "Accessible from Main program
+  PUBLIC SECTION.
+
+    DATA:
+      "To allow double-click from ALV to DDIC
+      mo_events TYPE REF TO cl_salv_events_table READ-ONLY.
+
+    METHODS :
+      constructor   IMPORTING  VALUE(report_id) TYPE rsvar-report
+                    EXCEPTIONS no_input,
+
+      "Authority check
+      check_authority,
+
+      "Select the needed data
+      get_data      RAISING lcx_exception,
+
+      "Generate ALV-output
+      display_data.
+
+  "Known within class
+  PRIVATE SECTION.
+*----------------------------------------------------------------------*
+*   Definitions for data selection and processing                       *
+*----------------------------------------------------------------------*
+    "Selected data
+    TYPES: BEGIN OF ty_table,
+             tabname TYPE tabname,
+             ddtext  TYPE ddtext,
+           END OF ty_table.
+
+    TYPES: tyt_table     TYPE STANDARD TABLE OF ty_table.
+
+    TYPES: BEGIN OF ty_cdsview,
+             ddlname    TYPE ddlname,
+             objectname TYPE ddtext,
+             tabname    TYPE tabname,
+             fieldname  TYPE fieldname,
+             rollname   TYPE rollname,
+             ddtext     TYPE ddtext,
+           END OF ty_cdsview.
+
+    TYPES: tyt_cdsview     TYPE STANDARD TABLE OF ty_cdsview.
+
+    "ALV-output
+    TYPES: BEGIN OF ty_out,
+             tabname    TYPE dd03l-tabname,
+             ddlname    TYPE ddldependency-ddlname,
+             objectname TYPE ddldependency-objectname,
+             ddtext     TYPE ddtext,
+             field1     TYPE dd03l-fieldname,
+             field2     TYPE dd03l-fieldname,
+             field3     TYPE dd03l-fieldname,
+             field4     TYPE dd03l-fieldname,
+           END OF ty_out .
+
+    DATA: lt_out   TYPE STANDARD TABLE OF ty_out.
+
+    "Definitions for selection screen data
+    DATA: lt_param  TYPE STANDARD TABLE OF rsparams.
+
+    "Deep structure for selection-screen content. Note: the fields need to be
+    "typed and named like the corresponding selection-screen fields!
+    "update as needed
+    TYPES: BEGIN OF ty_selscreen_data,
+             p_cds    TYPE          abap_bool,
+             p_table  TYPE          abap_bool,
+             s_field1 TYPE RANGE OF fieldname,
+             s_field2 TYPE RANGE OF fieldname,
+             s_field3 TYPE RANGE OF fieldname,
+             s_field4 TYPE RANGE OF fieldname,
+             s_exc    TYPE RANGE OF abap_bool,
+           END OF ty_selscreen_data.
+
+    DATA: ls_selscreen_data TYPE ty_selscreen_data.
+
+    "Definitions for ALV
+    DATA: lr_table     TYPE REF TO cl_salv_table,
+          lr_key       TYPE salv_s_layout_key,
+          zcx_salv_msg TYPE REF TO cx_salv_msg,
+          lv_msg       TYPE string.
+
+    "Definitions for method ALV_TOP_OF_PAGE
+    DATA: lr_top_element  TYPE REF TO cl_salv_form_layout_grid,
+          lr_end_element  TYPE REF TO cl_salv_form_layout_flow,
+          lr_grid         TYPE REF TO cl_salv_form_layout_grid,
+          lr_header       TYPE REF TO cl_salv_form_header_info,
+          lr_action       TYPE REF TO cl_salv_form_action_info,
+          lr_textview1    TYPE REF TO cl_salv_form_text,
+          lr_icon         TYPE REF TO cl_salv_form_icon,
+          lr_layout       TYPE REF TO cl_salv_layout,
+          lr_layout_grid1 TYPE REF TO cl_salv_form_layout_data_grid.
+
+    DATA: lv_text(50)    TYPE c,
+          lv_cnt_txt(20) TYPE c.
+
+    "Other variables
+    DATA: lv_cnt_in      LIKE sy-index,
+          lv_cnt_out     LIKE sy-index,
+          lv_tech_fields TYPE abap_bool.
+
+*----------------------------------------------------------------------*
+*   Methods called from within other methods in the class              *
+*----------------------------------------------------------------------*
+    METHODS:
+
+      "Put values from selection-screen into internal structures
+      populate_parameters,
+
+      "Get tablenames which contain specific fields
+      get_standard_tables,
+
+      "Get CDS-Views which contain specific fields
+      get_cds_views,
+
+      get_table_data  IMPORTING VALUE(iv_tab)       TYPE dd03l-tabname
+                                VALUE(i_tabfield)  TYPE fieldname
+                      EXPORTING VALUE(e_tablenames) TYPE tyt_table,
+
+      get_cds_data    IMPORTING VALUE(iv_tab)      TYPE dd03l-tabname
+                                VALUE(i_tabfield) TYPE fieldname
+                      EXPORTING VALUE(e_cdsnames)  TYPE tyt_cdsview,
+
+      "Headings for ALV-output
+      alv_top_of_page,
+
+      "Custom column headings for ALV output
+      alv_column_headings,
+
+      "Jump to SE12
+      on_link_click
+      FOR EVENT link_click
+             OF cl_salv_events_table
+      IMPORTING row column.
+
+ENDCLASS.                    "lcl_data DEFINITION
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_main IMPLEMENTATION                                  *
+*----------------------------------------------------------------------*
+CLASS lcl_main IMPLEMENTATION.
+
+*----------------------------------------------------------------------*
+* Constructor method to extract selection screen components & move the *
+* details to internal table.  Call private method "POPULATE_PARAMETERS *
+* to populate the components to appropriate variables                  *
+*----------------------------------------------------------------------*
+  METHOD constructor.
+
+    "Get selection-screen content into internal fields and tables
+    REFRESH : lt_param.
+
+    CALL FUNCTION 'RS_REFRESH_FROM_SELECTOPTIONS'
+      EXPORTING
+        curr_report     = report_id
+      TABLES
+        selection_table = lt_param
+      EXCEPTIONS
+        not_found       = 1
+        no_report       = 2
+        OTHERS          = 3.
+
+    IF sy-subrc <> 0.
+      RAISE no_input.
+    ELSE.
+      populate_parameters( ).
+    ENDIF.
+
+  ENDMETHOD.                    "constructor
+
+*----------------------------------------------------------------------*
+* Private method to Populate selection screen components               *
+* to appropriate variables                                             *
+*----------------------------------------------------------------------*
+  METHOD populate_parameters.
+
+    DATA: ls_param  TYPE rsparams.
+
+    "To put selection-screen content into deep structure
+    FIELD-SYMBOLS: <ls_substruct> TYPE any,
+                   <lt_subtable>  TYPE STANDARD TABLE,
+                   <ls_subtable>  TYPE any.
+
+    LOOP AT lt_param INTO ls_param.
+
+      IF ls_param-kind EQ 'S' AND
+         ls_param-sign EQ space.
+        "Don't fille range-table when nothing specified in sel-option
+        CONTINUE.
+      ENDIF.
+
+      "Fill deep-structure with selection-screen content
+      "This only works properly when the structure-names in the deep-structure
+      "have the same names as the fields on the selection-screen!
+      IF ls_param-kind = 'P'.
+        "For a parameter only the field needs to be moved
+        ASSIGN COMPONENT ls_param-selname OF STRUCTURE ls_selscreen_data TO <ls_substruct>.
+        IF sy-subrc = 0.
+          <ls_substruct> = ls_param-low.
+        ENDIF.
+      ELSEIF ls_param-kind = 'S'.
+        "For a select-option, the "range" structure needs to be added as a new line
+        ASSIGN COMPONENT ls_param-selname OF STRUCTURE ls_selscreen_data TO <lt_subtable>.
+        IF sy-subrc = 0.
+          APPEND INITIAL LINE TO <lt_subtable> ASSIGNING <ls_subtable>.
+          MOVE-CORRESPONDING ls_param TO <ls_subtable>.
+        ENDIF.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.                    "populate_parameters
+
+*----------------------------------------------------------------------*
+* Check authority                                                      *
+*----------------------------------------------------------------------*
+  METHOD check_authority.
+
+    "Only users with dev-access can execute program
+    AUTHORITY-CHECK OBJECT 'S_DEVELOP'
+                    ID 'ACTVT'    FIELD '03'
+                    ID 'DEVCLASS' DUMMY
+                    ID 'OBJTYPE'  DUMMY
+                    ID 'OBJNAME'  DUMMY
+                    ID 'P_GROUP'  DUMMY.
+
+    IF sy-subrc NE 0.
+      MESSAGE e000(38) WITH 'S_DEVELOP authorization required!'(e02).
+    ENDIF.
+
+  ENDMETHOD.
+
+*----------------------------------------------------------------------*
+* Select data based on selection screen components                     *
+*----------------------------------------------------------------------*
+  METHOD get_data.
+
+    IF ls_selscreen_data-p_table EQ 'X'.
+      get_standard_tables( ).
+    ELSE.
+      get_cds_Views( ).
+    ENDIF.
+
+    IF lt_out[]   IS INITIAL.
+      lcx_exception=>lv_result = 'No data available'(e01).
+      RAISE EXCEPTION TYPE lcx_exception.
+    ENDIF.
+
+  ENDMETHOD.                    "get_data
+
+*----------------------------------------------------------------------*
+* Get tablenames for fieldnames                                        *
+*----------------------------------------------------------------------*
+  METHOD get_standard_tables.
+
+    DATA: ls_out TYPE ty_out,
+          tables_fieldname1 TYPE STANDARD TABLE OF ty_table,
+          tables_fieldname2 TYPE STANDARD TABLE OF ty_table,
+          tables_fieldname3 TYPE STANDARD TABLE OF ty_table,
+          tables_fieldname4 TYPE STANDARD TABLE OF ty_table,
+          lv_tab            TYPE dd03l-tabname.
+
+    FIELD-SYMBOLS: <fs_tab13> TYPE mandt.
+
+    IF ls_selscreen_data-s_exc[ 1 ]-low IS NOT INITIAL.
+      lv_tab = '/%'.
+    ENDIF.
+
+    IF ls_selscreen_data-s_field1 IS NOT INITIAL.
+      get_table_data( EXPORTING iv_tab      = lv_tab
+                                i_tabfield = ls_selscreen_data-s_field1[ 1 ]-low
+                      IMPORTING e_tablenames = tables_fieldname1 ).
+    ENDIF.
+
+    IF ls_selscreen_data-s_field2 IS NOT INITIAL.
+      get_table_data( EXPORTING iv_tab      = lv_tab
+                                i_tabfield = ls_selscreen_data-s_field2[ 1 ]-low
+                      IMPORTING e_tablenames = tables_fieldname2 ).
+    ENDIF.
+
+    IF ls_selscreen_data-s_field3 IS NOT INITIAL.
+      get_table_data( EXPORTING iv_tab      = lv_tab
+                                i_tabfield = ls_selscreen_data-s_field3[ 1 ]-low
+                      IMPORTING e_tablenames = tables_fieldname3 ).
+    ENDIF.
+
+    IF ls_selscreen_data-s_field4 IS NOT INITIAL.
+      get_table_data( EXPORTING iv_tab      = lv_tab
+                                i_tabfield = ls_selscreen_data-s_field4[ 1 ]-low
+                      IMPORTING e_tablenames = tables_fieldname4 ).
+    ENDIF.
+
+    IF ls_selscreen_data-s_field1[ 1 ]-low IS NOT INITIAL.
+
+      LOOP AT tables_fieldname1 INTO DATA(table_fieldname1).
+        IF tables_fieldname2[] IS NOT INITIAL.
+          READ TABLE tables_fieldname2 INTO DATA(table_fieldname2)
+                            WITH KEY tabname = table_fieldname1-tabname.
+          IF sy-subrc = 0.
+            IF tables_fieldname3[] IS NOT INITIAL.
+              READ TABLE tables_fieldname3 INTO DATA(table_fieldname3)
+                                WITH KEY tabname = table_fieldname1-tabname.
+              IF sy-subrc = 0.
+                IF tables_fieldname4[] IS NOT INITIAL.
+                  READ TABLE tables_fieldname4 INTO DATA(table_fieldname4)
+                                    WITH KEY tabname = table_fieldname1-tabname.
+                  IF sy-subrc = 0.
+                    MOVE-CORRESPONDING table_fieldname1 to ls_out.
+                    ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+                    ls_out-field2 =  ls_selscreen_data-s_field2[ 1 ]-low.
+                    ls_out-field3 =  ls_selscreen_data-s_field3[ 1 ]-low.
+                    ls_out-field4 =  ls_selscreen_data-s_field4[ 1 ]-low.
+                    APPEND ls_out TO lt_out.
+                    CLEAR ls_out.
+                  ELSE.
+                    MOVE-CORRESPONDING table_fieldname1 to ls_out.
+                    ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+                    ls_out-field2 =  ls_selscreen_data-s_field2[ 1 ]-low.
+                    ls_out-field3 =  ls_selscreen_data-s_field3[ 1 ]-low.
+                    APPEND ls_out TO lt_out.
+                    CLEAR ls_out.
+                  ENDIF.
+                ELSE.
+                  MOVE-CORRESPONDING table_fieldname1 to ls_out.
+                  ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+                  ls_out-field2 =  ls_selscreen_data-s_field2[ 1 ]-low.
+                  ls_out-field3 =  ls_selscreen_data-s_field3[ 1 ]-low.
+                  APPEND ls_out TO lt_out.
+                  CLEAR ls_out.
+                ENDIF.
+              ELSE.
+                MOVE-CORRESPONDING table_fieldname1 to ls_out.
+                ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+                ls_out-field2 =  ls_selscreen_data-s_field2[ 1 ]-low.
+                APPEND ls_out TO lt_out.
+                CLEAR ls_out.
+              ENDIF.
+            ELSE.
+              MOVE-CORRESPONDING table_fieldname1 to ls_out.
+              ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+              ls_out-field2 =  ls_selscreen_data-s_field2[ 1 ]-low.
+              APPEND ls_out TO lt_out.
+              CLEAR table_fieldname2.
+              CLEAR ls_out.
+            ENDIF.
+          ELSE.
+            MOVE-CORRESPONDING table_fieldname1 to ls_out.
+            ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+            APPEND ls_out TO lt_out.
+            CLEAR ls_out.
+          ENDIF.
+        ELSE.
+          MOVE-CORRESPONDING table_fieldname1 to ls_out.
+          ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+          APPEND ls_out TO lt_out.
+          CLEAR table_fieldname1.
+          CLEAR ls_out.
+        ENDIF.
+
+      ENDLOOP.
+
+    ENDIF.
+
+  ENDMETHOD.
+
+*----------------------------------------------------------------------*
+* Get CDS-Views for fieldnames                                        *
+*----------------------------------------------------------------------*
+  METHOD get_cds_views.
+
+    DATA: ls_out TYPE ty_out,
+          cdsviews_fieldname1 TYPE STANDARD TABLE OF ty_cdsview,
+          cdsviews_fieldname2 TYPE STANDARD TABLE OF ty_cdsview,
+          cdsviews_fieldname3 TYPE STANDARD TABLE OF ty_cdsview,
+          cdsviews_fieldname4 TYPE STANDARD TABLE OF ty_cdsview,
+          lv_tab              TYPE dd03l-tabname.
+
+
+    IF ls_selscreen_data-s_exc[ 1 ]-low IS NOT INITIAL.
+      lv_tab = '/%'.
+    ENDIF.
+
+    IF ls_selscreen_data-s_field1 IS NOT INITIAL.
+      get_cds_data( EXPORTING iv_tab     = lv_tab
+                              i_tabfield = ls_selscreen_data-s_field1[ 1 ]-low
+                    IMPORTING e_cdsnames = cdsviews_fieldname1 ).
+    ENDIF.
+
+    IF ls_selscreen_data-s_field2 IS NOT INITIAL.
+      get_cds_data( EXPORTING iv_tab     = lv_tab
+                              i_tabfield = ls_selscreen_data-s_field2[ 1 ]-low
+                    IMPORTING e_cdsnames = cdsviews_fieldname2 ).
+    ENDIF.
+
+    IF ls_selscreen_data-s_field3 IS NOT INITIAL.
+      get_cds_data( EXPORTING iv_tab     = lv_tab
+                              i_tabfield = ls_selscreen_data-s_field3[ 1 ]-low
+                    IMPORTING e_cdsnames = cdsviews_fieldname3 ).
+    ENDIF.
+
+    IF ls_selscreen_data-s_field4 IS NOT INITIAL.
+      get_cds_data( EXPORTING iv_tab     = lv_tab
+                              i_tabfield = ls_selscreen_data-s_field4[ 1 ]-low
+                    IMPORTING e_cdsnames = cdsviews_fieldname4 ).
+    ENDIF.
+
+    IF ls_selscreen_data-s_field1[ 1 ]-low IS NOT INITIAL.
+
+      LOOP AT cdsviews_fieldname1 INTO DATA(cdsview_fieldname1).
+        IF cdsviews_fieldname2[] IS NOT INITIAL.
+          READ TABLE cdsviews_fieldname2 INTO DATA(cdsview_fieldname2)
+                            WITH KEY tabname = cdsview_fieldname1-tabname.
+          IF sy-subrc = 0.
+            IF cdsviews_fieldname3[] IS NOT INITIAL.
+              READ TABLE cdsviews_fieldname3 INTO DATA(cdsview_fieldname3)
+                                WITH KEY tabname = cdsview_fieldname1-tabname.
+              IF sy-subrc = 0.
+                IF cdsviews_fieldname4[] IS NOT INITIAL.
+                  READ TABLE cdsviews_fieldname4 INTO DATA(cdsview_fieldname4)
+                                    WITH KEY tabname = cdsview_fieldname1-tabname.
+                  IF sy-subrc = 0.
+                    MOVE-CORRESPONDING cdsview_fieldname1 to ls_out.
+                    ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+                    ls_out-field2 =  ls_selscreen_data-s_field2[ 1 ]-low.
+                    ls_out-field3 =  ls_selscreen_data-s_field3[ 1 ]-low.
+                    ls_out-field4 =  ls_selscreen_data-s_field4[ 1 ]-low.
+                    APPEND ls_out TO lt_out.
+                    CLEAR ls_out.
+                  ELSE.
+                    MOVE-CORRESPONDING cdsview_fieldname1 to ls_out.
+                    ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+                    ls_out-field2 =  ls_selscreen_data-s_field2[ 1 ]-low.
+                    ls_out-field3 =  ls_selscreen_data-s_field3[ 1 ]-low.
+                    APPEND ls_out TO lt_out.
+                    CLEAR ls_out.
+                  ENDIF.
+                ELSE.
+                  MOVE-CORRESPONDING cdsview_fieldname1 to ls_out.
+                  ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+                  ls_out-field2 =  ls_selscreen_data-s_field2[ 1 ]-low.
+                  ls_out-field3 =  ls_selscreen_data-s_field3[ 1 ]-low.
+                  APPEND ls_out TO lt_out.
+                  CLEAR ls_out.
+                ENDIF.
+              ELSE.
+                MOVE-CORRESPONDING cdsview_fieldname1 to ls_out.
+                ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+                ls_out-field2 =  ls_selscreen_data-s_field2[ 1 ]-low.
+                APPEND ls_out TO lt_out.
+                CLEAR ls_out.
+              ENDIF.
+            ELSE.
+              MOVE-CORRESPONDING cdsview_fieldname1 to ls_out.
+              ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+              ls_out-field2 =  ls_selscreen_data-s_field2[ 1 ]-low.
+              APPEND ls_out TO lt_out.
+              CLEAR cdsview_fieldname2.
+              CLEAR ls_out.
+            ENDIF.
+          ELSE.
+            MOVE-CORRESPONDING cdsview_fieldname1 to ls_out.
+            ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+            APPEND ls_out TO lt_out.
+            CLEAR ls_out.
+          ENDIF.
+        ELSE.
+          MOVE-CORRESPONDING cdsview_fieldname1 to ls_out.
+          ls_out-field1 =  ls_selscreen_data-s_field1[ 1 ]-low.
+          APPEND ls_out TO lt_out.
+          CLEAR cdsview_fieldname1.
+          CLEAR ls_out.
+        ENDIF.
+
+      ENDLOOP.
+
+    ENDIF.
+
+  ENDMETHOD.
+
+*----------------------------------------------------------------------*
+* Select tables which contain fields in their definition               *
+*----------------------------------------------------------------------*
+  METHOD get_table_data.
+
+    SELECT DISTINCT c~tabname, t~ddtext
+      FROM dd03l AS c
+      JOIN dd02v AS p
+        ON p~tabname  = c~tabname
+       AND p~tabclass = 'TRANSP'
+      JOIN dd09l AS f
+        ON f~tabname = p~tabname
+      LEFT OUTER JOIN dd02t AS t
+        ON t~tabname    = c~tabname
+       AND t~ddlanguage = @sy-langu
+      INTO CORRESPONDING FIELDS OF TABLE @e_tablenames
+     WHERE ( c~rollname  EQ @i_tabfield
+          OR c~fieldname EQ @i_tabfield )
+       AND p~tabname NOT LIKE @iv_tab
+     ORDER BY c~tabname.
+
+  ENDMETHOD.
+
+*----------------------------------------------------------------------*
+* Select CDS-view defintions which contain fields in their definition  *
+*----------------------------------------------------------------------*
+  METHOD get_cds_data.
+
+    SELECT DISTINCT d~ddlname, d~objectname, p~tabname, p~fieldname, p~rollname, t~ddtext
+      FROM ddldependency as d
+      JOIN dd03l AS p
+        ON p~tabname  = d~objectname
+       AND p~as4local = d~state
+      LEFT OUTER JOIN ddddlsrct AS t
+        ON t~ddlname    = d~ddlname
+       AND t~ddlanguage = @sy-langu
+      INTO CORRESPONDING FIELDS OF TABLE @e_cdsnames
+     WHERE ( p~rollname  EQ @i_tabfield
+          OR p~fieldname EQ @i_tabfield )
+       AND p~tabname NOT LIKE @iv_tab
+     ORDER BY d~ddlname.
+
+  ENDMETHOD.
+
+*----------------------------------------------------------------------*
+* Display extracted data using SALV Classes                            *
+*----------------------------------------------------------------------*
+  METHOD display_data.
+
+    DESCRIBE TABLE lt_out LINES lv_cnt_out.
+
+    TRY.
+        cl_salv_table=>factory(
+          IMPORTING
+            r_salv_table   = lr_table
+          CHANGING
+            t_table        = lt_out ).
+
+        "Activate ALV generic Functions
+        "Note: PF-Status STANDARD needs to be copied from FG SALV as SALV_STANDARD!
+        lr_table->set_screen_status(
+          pfstatus      = 'SALV_STANDARD'
+          report        = sy-repid
+          set_functions = lr_table->c_functions_all ).
+
+        "Add information at top of page in ALV-output
+        alv_top_of_page( ).
+
+        lr_layout = lr_table->get_layout( ).
+
+        lr_key-report = sy-repid.
+        lr_layout->set_key( lr_key ).
+
+        lr_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+        "Overwrite heading for column DIFF
+        alv_column_headings(  ).
+
+        "Register event handlers
+        mo_events = lr_table->get_event( ).
+
+        SET HANDLER on_link_click FOR mo_events.
+
+        "Generate ALV-output
+        lr_table->display( ).
+
+      CATCH cx_salv_msg INTO zcx_salv_msg.
+        lv_msg = zcx_salv_msg->get_text( ).
+        WRITE :/ lv_msg.
+    ENDTRY.
+
+  ENDMETHOD.                    "display_data
+
+*----------------------------------------------------------------------*
+* Add information at top of ALV-output                                 *
+*----------------------------------------------------------------------*
+  METHOD alv_top_of_page.
+
+    CREATE OBJECT lr_top_element
+      EXPORTING
+        columns = 2.
+
+    lr_header = lr_top_element->create_header_information(
+      row    = 1
+      column = 1
+      text   =  sy-title ).
+
+    lv_cnt_txt = lv_cnt_out.
+
+    CONCATENATE '# of items selected:'(c01)
+                lv_cnt_txt
+           INTO lv_text.
+
+    lr_grid = lr_top_element->create_grid( row = 2
+                                           column = 1 ).
+
+    lr_textview1 = lr_grid->create_text(
+      row     = 1
+      column  = 1
+      text    = lv_text ).
+
+    lr_layout_grid1 ?= lr_textview1->get_layout_data( ).
+    lr_layout_grid1->set_h_align( if_salv_form_c_h_align=>left ).
+
+    lr_table->set_top_of_list( lr_top_element ).
+
+  ENDMETHOD.
+
+*----------------------------------------------------------------------*
+* Change ALV column headings as needed                                 *
+* Note: SHORT_TEXT cannot be longer than 10 characters. This may need  *
+*       to be taken into account for text-elements which are generated *
+*       to twice the needed length.                                    *
+*----------------------------------------------------------------------*
+  METHOD alv_column_headings.
+
+    DATA: long_text   TYPE        scrtext_l,
+          medium_text TYPE        scrtext_m,
+          short_text  TYPE        scrtext_s.
+
+    DATA: lr_columns  TYPE REF TO cl_salv_columns,
+          lr_column   TYPE REF TO cl_salv_column_table.
+
+    TRY.
+
+        lr_columns = lr_table->get_columns( ).
+        lr_columns->set_optimize( 'X' ).
+
+
+        "Hide columns not relevant for CDS- or table-selection and set hotspot column
+        IF ls_selscreen_data-p_table EQ abap_true.
+
+          lr_column ?= lr_columns->get_column( 'TABNAME' ).
+          lr_column->set_cell_type( if_salv_c_cell_type=>hotspot ).
+
+          lr_column ?= lr_columns->get_column( 'DDLNAME' ).
+          lr_column->set_technical(  ).
+
+          lr_column ?= lr_columns->get_column( 'OBJECTNAME' ).
+          lr_column->set_technical(  ).
+
+        ELSE.
+          lr_column ?= lr_columns->get_column( 'TABNAME' ).
+          lr_column->set_technical(  ).
+
+          lr_column ?= lr_columns->get_column( 'OBJECTNAME' ).
+          lr_column->set_cell_type( if_salv_c_cell_type=>hotspot ).
+
+        ENDIF.
+
+        lr_column ?= lr_columns->get_column( 'FIELD1' ).
+        lr_column->set_long_text( 'Fieldname 1'(h01) ).
+        lr_column->set_medium_text( 'Fieldname 1'(h01) ).
+
+        lr_column ?= lr_columns->get_column( 'FIELD2' ).
+        lr_column->set_long_text( 'Fieldname 2'(h02) ).
+        lr_column->set_medium_text( 'Fieldname 2'(h02) ).
+
+        lr_column ?= lr_columns->get_column( 'FIELD3' ).
+        lr_column->set_long_text( 'Fieldname 3'(h03) ).
+        lr_column->set_medium_text( 'Fieldname 3'(h03) ).
+
+        lr_column ?= lr_columns->get_column( 'FIELD4' ).
+        lr_column->set_long_text( 'Fieldname 4'(h04) ).
+        lr_column->set_medium_text( 'Fieldname 4'(h04) ).
+
+      CATCH cx_salv_not_found INTO DATA(lcx_salv_not_found).
+    ENDTRY.
+
+  ENDMETHOD.                     "alv_column_headings
+
+*----------------------------------------------------------------------*
+* Jump to other transaction to display transport or delivery           *
+*----------------------------------------------------------------------*
+  METHOD on_link_click.
+    TRY.
+        DATA(selected_entry) = lt_out[ row ].
+        CASE column.
+          WHEN 'TABNAME'.
+            "Call DDIC
+            SET PARAMETER ID 'DTB' FIELD selected_entry-tabname.
+            CALL TRANSACTION 'SE12' AND SKIP FIRST SCREEN.
+
+          WHEN 'OBJECTNAME'.
+            "Call DDIC
+            SET PARAMETER ID 'DTB' FIELD selected_entry-objectname.
+            CALL TRANSACTION 'SE12' AND SKIP FIRST SCREEN.
+
+           WHEN OTHERS.
+        ENDCASE.
+      CATCH cx_sy_itab_line_not_found.
+        "Error message goes here
+    ENDTRY.
+  ENDMETHOD.
+
+ENDCLASS.                    "lcl_order IMPLEMENTATION
+
+*-----------------------------------------------------------------------
+*      Object references and variables
+*-----------------------------------------------------------------------
+DATA : zcl_main      TYPE REF TO lcl_main,
+       zcx_exception TYPE REF TO lcx_exception.
+
+DATA : lv_result     TYPE string.
+
+*-----------------------------------------------------------------------
+*           Selection-Screen Handling
+*-----------------------------------------------------------------------
+TYPE-POOLS: sscr.
+
+*-----------------------------------------------------------------------
+*          Selection-Screen
+*-----------------------------------------------------------------------
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-s01.
+PARAMETERS: p_table RADIOBUTTON GROUP rdg1 DEFAULT 'X',
+            p_cds   RADIOBUTTON GROUP rdg1.
+SELECTION-SCREEN END OF BLOCK b1.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-s02.
+SELECT-OPTIONS: s_field1 FOR dd03l-fieldname NO-EXTENSION NO INTERVALS OBLIGATORY,
+                s_field2 FOR dd03l-fieldname NO-EXTENSION NO INTERVALS ,
+                s_field3 FOR dd03l-fieldname NO-EXTENSION NO INTERVALS ,
+                s_field4 FOR dd03l-fieldname NO-EXTENSION NO INTERVALS ,
+                s_exc    FOR boole-boole NO-EXTENSION NO INTERVALS DEFAULT'/' NO-DISPLAY.
+SELECTION-SCREEN END OF BLOCK b2.
+
+*-----------------------------------------------------------------------
+*        INITIALIZATION
+*-----------------------------------------------------------------------
+INITIALIZATION.
+
+*-----------------------------------------------------------------------
+*       AT-SELECTION-SCREEN OUTPUT
+*-----------------------------------------------------------------------
+AT SELECTION-SCREEN OUTPUT.
+
+*-----------------------------------------------------------------------
+*       AT-SELECTION-SCREEN
+*-----------------------------------------------------------------------
+AT SELECTION-SCREEN.
+
+*-----------------------------------------------------------------------
+*       START-OF-SELECTION
+*-----------------------------------------------------------------------
+START-OF-SELECTION.
+
+  CREATE OBJECT zcl_main
+    EXPORTING
+      report_id = sy-repid
+    EXCEPTIONS
+      no_input  = 1.
+
+  IF sy-subrc EQ 0.
+    TRY.
+        "Check authority
+        zcl_main->check_authority( ).
+
+        "Select data for Tables and CDS-Views and prepare output
+        zcl_main->get_data( ).
+
+        "Generate ALV-output
+        zcl_main->display_data( ).
+
+        "More logic as needed
+
+      CATCH lcx_exception INTO zcx_exception.
+        lv_result = zcx_exception->get_text( ).
+        WRITE:/ lv_result.
+    ENDTRY.
+  ENDIF.
